@@ -1,6 +1,6 @@
 {
-  "name": "Electronics Retail Billing Desk",
-  "description": "Professional billing, stock, and invoice management software for electronics retail shops.",
+  "name": "Engineering Enterprise Billing Desk",
+  "description": "Professional billing, stock, and invoice management software for Engineering Enterprise.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

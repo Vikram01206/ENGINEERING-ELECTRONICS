@@ -612,8 +612,8 @@ export default function ProductManager({
                   >
                     <option value="0">0% Exempt</option>
                     <option value="5">5% SGST + CGST</option>
-                    <option value="12">12% Standard Electronics</option>
-                    <option value="18">18% High-Grade Electronics</option>
+                    <option value="12">12% Standard Engineering</option>
+                    <option value="18">18% High-Grade Engineering</option>
                     <option value="28">28% Luxury Items</option>
                   </select>
                 </div>

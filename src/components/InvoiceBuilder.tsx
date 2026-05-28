@@ -232,7 +232,7 @@ export default function InvoiceBuilder({
     }
 
     if (lineItems.length === 0) {
-      onShowNotification('Please add at least one electronics item to process invoice.', 'error');
+      onShowNotification('Please add at least one catalog item to process invoice.', 'error');
       return;
     }
 
@@ -430,7 +430,7 @@ export default function InvoiceBuilder({
                       })
                     ) : (
                       <div className="px-4 py-4 text-center text-slate-400 text-xs">
-                        No electronics items found matching query. Use "Products Catalog" to add SKUs.
+                        No catalog items found matching query. Use "Products Catalog" to add SKUs.
                       </div>
                     )}
                   </div>

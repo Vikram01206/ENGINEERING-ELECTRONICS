@@ -47,7 +47,7 @@ export default function SettingsPanel({
   const handleExportBackup = () => {
     try {
       const backupObj = {
-        metaName: 'Engineering Electronics Ledger Export',
+        metaName: 'Engineering Enterprise Ledger Export',
         exportedAt: new Date().toISOString(),
         shopDetails,
         products,
@@ -60,7 +60,7 @@ export default function SettingsPanel({
 
       const link = document.createElement('a');
       link.href = url;
-      link.download = `engineering_electronics_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `engineering_enterprise_backup_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -142,7 +142,7 @@ export default function SettingsPanel({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Electronics Store Registered Name*
+                  Enterprise Registered Name*
                 </label>
                 <input
                   id="settings-shop-name"

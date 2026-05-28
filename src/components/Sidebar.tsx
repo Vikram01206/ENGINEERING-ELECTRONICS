@@ -51,7 +51,7 @@ export default function Sidebar({ activeTab, setActiveTab, shopDetails }: Sideba
             </div>
             <div>
               <h1 className="text-white font-serif text-xl font-bold tracking-tight leading-none">
-                ENGINEERING <span className="text-[#B40023]">ELECTRONICS</span>
+                ENGINEERING <span className="text-[#B40023]">ENTERPRISE</span>
               </h1>
               <p className="text-slate-400 text-[10px] uppercase tracking-widest mt-1 font-sans font-semibold">
                 Professional Billing v2.0
@@ -111,7 +111,7 @@ export default function Sidebar({ activeTab, setActiveTab, shopDetails }: Sideba
             EE
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-white font-semibold font-serif tracking-wide leading-tight">ENGINEERING ELECTRONICS</p>
+            <p className="text-xs text-white font-semibold font-serif tracking-wide leading-tight">ENGINEERING ENTERPRISE</p>
             <p className="text-[10px] text-slate-500 font-sans mt-0.5 font-medium">Terminal #01 • Offline</p>
           </div>
         </div>

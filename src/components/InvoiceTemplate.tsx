@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
-import { Printer, Download, Edit2, Check, ArrowLeft, RefreshCw, Plus, Trash2 } from 'lucide-react';
+// @ts-ignore
+import html2canvas from 'html2canvas';
+import { Printer, Download, Edit2, Check, ArrowLeft, RefreshCw, Plus, Trash2, ChevronDown, FileSpreadsheet, FileImage, FileText } from 'lucide-react';
 
 export interface InvoiceTemplateData {
   invoiceNumber: string;
@@ -56,6 +58,7 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
   const [editMode, setEditMode] = useState(false);
   const [currentData, setCurrentData] = useState<InvoiceTemplateData>(initialInvoiceData);
   const [showLogo, setShowLogo] = useState(true);
+  const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
 
   // Auto-recalculate values in local state when items, discount, or shipping changes
   const calculateTotals = (itemsList: InvoiceTemplateData['items'], disc: InvoiceTemplateData['discount'], shipValue: number) => {
@@ -355,7 +358,173 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
     return result;
   };
 
-  // Native PDF capture
+  // A robust downloader that bypasses Nativefier sandbox issues and resolves dynamically
+  const triggerSafeDownload = (blobOrDataUri: Blob | string, filename: string, mimeType: string) => {
+    console.log(`[DOWNLOAD ENGINE] Attempting to save: ${filename} (MimeType: ${mimeType})`);
+    
+    // Safety check for empty content
+    if (!blobOrDataUri) {
+      console.error("[DOWNLOAD ENGINE ERROR] File content payload is empty.");
+      alert("Download failed: File content generated was empty.");
+      return;
+    }
+
+    try {
+      if (blobOrDataUri instanceof Blob) {
+        // Standard Web approach with local Object URL
+        const url = URL.createObjectURL(blobOrDataUri);
+        console.log(`[DOWNLOAD SYSTEM] ObjectURL successfully allocated: ${url}`);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        
+        // Dispatched element click action
+        try {
+          link.click();
+          console.log(`[DOWNLOAD SYSTEM] Anchor click dispatched successfully for ${filename}`);
+        } catch (clickErr) {
+          console.warn("[DOWNLOAD SYSTEM] Programmatic click failed, using MouseEvent dispatch fallback:", clickErr);
+          const clickEvent = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true
+          });
+          link.dispatchEvent(clickEvent);
+        }
+        
+        document.body.removeChild(link);
+        
+        // Revoke after a delay to ensure the browser frame thread has successfully received the download stream
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          console.log(`[DOWNLOAD SYSTEM] ObjectURL revoked/deallocated: ${url}`);
+        }, 12000);
+        
+      } else if (typeof blobOrDataUri === 'string' && blobOrDataUri.startsWith('data:')) {
+        // Base64 Data-URI payload
+        console.log(`[DOWNLOAD SYSTEM] Data-URI detected (payload length: ${blobOrDataUri.length} characters).`);
+        const link = document.createElement('a');
+        link.href = blobOrDataUri;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        
+        try {
+          link.click();
+          console.log(`[DOWNLOAD SYSTEM] Data-URI click dispatched successfully for ${filename}`);
+        } catch (clickErr) {
+          console.warn("[DOWNLOAD SYSTEM] Data-URI programmatic click failed, dispatching MouseEvent fallback:", clickErr);
+          const clickEvent = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true
+          });
+          link.dispatchEvent(clickEvent);
+        }
+        document.body.removeChild(link);
+      } else {
+        // Fallback for direct URL strings
+        const link = document.createElement('a');
+        link.href = blobOrDataUri;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (err: any) {
+      console.error("[DOWNLOAD ENGINE CRITICAL ERROR] Standard sandbox file-save routine failed:", err);
+      
+      // Fallback 1: PDF printable fallback alert
+      if (filename.toLowerCase().endsWith('.pdf')) {
+        alert(
+          `NOTICE: Environment File System Sandbox Detected!\n\n` +
+          `Your packaged client (Nativefier/Electron) has restricted direct file-write operations.\n\n` +
+          `FIX: Click "Print Invoice" on the toolbar and select "Save as PDF" relative to your local printer dialog to save custom drafts perfectly!`
+        );
+      } else if (filename.toLowerCase().endsWith('.csv') || filename.toLowerCase().endsWith('.xls')) {
+        // Clipboard fallback for Spreadsheet operations
+        try {
+          if (blobOrDataUri instanceof Blob) {
+            blobOrDataUri.text().then(text => {
+              navigator.clipboard.writeText(text);
+              alert("Sandbox restricted direct file save. The Excel Ledger CSV rows have been successfully copied to your system clipboard instead! Paste in Microsoft Excel or Google Sheets directly via Ctrl+V.");
+            });
+          } else if (typeof blobOrDataUri === 'string') {
+            navigator.clipboard.writeText(blobOrDataUri);
+            alert("Sandbox restricted direct file save. The Excel Ledger CSV rows have been successfully copied to your system clipboard instead! Paste in Microsoft Excel or Google Sheets directly via Ctrl+V.");
+          }
+        } catch (clipErr) {
+          console.error("Clipboard backup fallback failed:", clipErr);
+          alert(`Download blocked by environment sandbox. Error: ${err.message || err}`);
+        }
+      } else {
+        alert(`File save is restricted by your local native client sandbox. Error: ${err.message || err}`);
+      }
+    }
+  };
+
+  // Helper to compile Invoice Data into Excel CSV representation
+  const generateInvoiceCSV = (data: InvoiceTemplateData): string => {
+    const rows = [
+      ['--- INVOICE LEDGER TRANSACTION ---'],
+      ['Invoice Number', data.invoiceNumber],
+      ['Invoice Date', data.invoiceDate],
+      ['Due Date', data.dueDate],
+      ['P.O. Number', data.poNumber || 'N/A'],
+      ['Reference', data.reference || 'N/A'],
+      ['Payment Method', data.paymentMethod],
+      ['Payment Terms', data.paymentTerms],
+      [],
+      ['--- CUSTOMER DETAIL ---'],
+      ['Name', data.customer.name],
+      ['Address Line 1', data.customer.address1],
+      ['Address Line 2', data.customer.address2 || ''],
+      ['City, State, Zip', data.customer.cityStateZip],
+      ['Phone', data.customer.phone || 'N/A'],
+      ['Email', data.customer.email || 'N/A'],
+      ['GSTIN', data.customer.gst || 'N/A'],
+      [],
+      ['--- INLINE EXPENSES (SKUs) ---'],
+      ['SKU Code', 'Description', 'Qty', 'Unit Price', 'Tax %', 'Tax Amount', 'Total Amount']
+    ];
+
+    data.items.forEach(item => {
+      rows.push([
+        item.sku,
+        item.description,
+        item.qty.toString(),
+        item.unitPrice.toString(),
+        item.taxPercent.toString(),
+        item.taxAmount.toFixed(2),
+        item.amount.toFixed(2)
+      ]);
+    });
+
+    rows.push([]);
+    rows.push(['--- LEDGER TOTALS ---']);
+    rows.push(['Subtotal', data.subtotal.toFixed(2)]);
+    rows.push(['Discount Value', `${data.discount.value} (${data.discount.type})`]);
+    rows.push(['Discount Amount', data.discount.amount.toFixed(2)]);
+    rows.push(['Shipping Details', data.shipping.toFixed(2)]);
+    rows.push(['CGST (9%)', data.cgst.toFixed(2)]);
+    rows.push(['SGST (9%)', data.sgst.toFixed(2)]);
+    rows.push(['GRAND TOTAL (INR)', data.total.toFixed(2)]);
+
+    return rows.map(row => 
+      row.map(val => {
+        const stringified = val ? val.replace(/"/g, '""') : '';
+        return (stringified.includes(',') || stringified.includes('\n') || stringified.includes('"'))
+          ? `"${stringified}"`
+          : stringified;
+      }).join(',')
+    ).join('\n');
+  };
+
+  // PDF Download Trigger
   const handleDownloadPDF = () => {
     const element = document.getElementById('invoice-print-content');
     if (!element) return;
@@ -371,7 +540,6 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
         scrollY: 0,
         windowWidth: 794,
         onclone: (clonedDoc: Document) => {
-          // 1. Inline and clean linked stylesheets containing oklch/oklab to prevent html2canvas external fetching/parsing issues
           clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((linkEl) => {
             try {
               const sheet = (linkEl as HTMLLinkElement).sheet;
@@ -393,18 +561,16 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
                 }
               }
             } catch (e) {
-              console.warn("Could not inline/clean link stylesheet:", e);
+              console.warn("Could not inline stylesheet inside print instance:", e);
             }
           });
 
-          // 2. Clean existing inline style elements
           clonedDoc.querySelectorAll('style').forEach((styleEl) => {
             if (styleEl.textContent && (styleEl.textContent.includes('oklch') || styleEl.textContent.includes('oklab'))) {
               styleEl.textContent = parseModernColorsAndConvert(styleEl.textContent);
             }
           });
 
-          // 3. Clean inline style attributes on elements themselves
           clonedDoc.querySelectorAll('[style]').forEach((el) => {
             const styleAttr = el.getAttribute('style');
             if (styleAttr && (styleAttr.includes('oklch') || styleAttr.includes('oklab'))) {
@@ -412,7 +578,6 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
             }
           });
 
-          // 4. Upper layer defense: Mock getComputedStyle using a plain copy to safely handle oklch/oklab color overrides
           const clonedWindow = clonedDoc.defaultView;
           if (clonedWindow) {
             const originalGetComputedStyle = clonedWindow.getComputedStyle;
@@ -449,7 +614,6 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
                   }
                 } catch (_) {}
               }
-              
               return copy;
             };
           }
@@ -457,24 +621,109 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
       },
       jsPDF: { orientation: 'portrait' as const, unit: 'mm' as const, format: 'a4' as const }
     };
-    const isPackaged = navigator.userAgent.toLowerCase().match(/(electron|nativefier|chrome-extension)/);
-    if (isPackaged) {
-      // Packaged Desktop (Nativefier/Electron) context: standard dynamic Blob save() triggers can be restricted.
-      // Generating a base64 PDF data-uri forces Chromium to correctly open standard download options offline.
+
+    console.log("[PDF GENERATOR] Starting PDF render sequence...");
+    try {
       const worker = html2pdf().set(opt).from(element);
+      
+      // Nativefier/Electron security disallows dynamic window location object-url triggers.
+      // Generating a base64 Data URI from the PDF output gives Electron a standard protocol it can route cleanly to standard save paths.
       worker.output('datauristring').then((dataUri: string) => {
-        const link = document.createElement('a');
-        link.href = dataUri;
-        link.download = `${currentData.invoiceNumber || 'INV-001'}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const filename = `${currentData.invoiceNumber || 'INV-001'}.pdf`;
+        triggerSafeDownload(dataUri, filename, 'application/pdf');
       }).catch((err: any) => {
-        console.error("Packaged PDF base64 render failed, falling back to blob save:", err);
+        console.error("[PDF PROCESSOR ERROR] Base64 rendering failed, calling standard save():", err);
         html2pdf().set(opt).from(element).save();
       });
-    } else {
-      html2pdf().set(opt).from(element).save();
+    } catch (err: any) {
+      console.error("[PDF PREPARATION CRITICAL FAIL]:", err);
+      alert('PDF compiler crashed. Please use the "Print Invoice" option as an alternative workaround!');
+    }
+  };
+
+  // Excel (.csv) Download Trigger
+  const handleDownloadExcel = () => {
+    console.log("[EXCEL ENGINE] Extracting database metadata for ledger compilations...");
+    try {
+      const csvStr = generateInvoiceCSV(currentData);
+      const BOM = "\uFEFF"; // UTF-8 BOM to ensure MS Excel parses Asian or specialized symbols cleanly
+      const blob = new Blob([BOM + csvStr], { type: 'text/csv;charset=utf-8' });
+      const filename = `Invoice_${currentData.invoiceNumber || 'INV-001'}_Ledger.csv`;
+      
+      triggerSafeDownload(blob, filename, 'text/csv');
+    } catch (err: any) {
+      console.error("[EXCEL DOWNLOAD EXCEPTION]:", err);
+      alert(`CSV compile failed: ${err.message || err}`);
+    }
+  };
+
+  // Image (.png) Download Trigger
+  const handleDownloadImage = () => {
+    const element = document.getElementById('invoice-print-content');
+    if (!element) return;
+
+    const opt = {
+      scale: 2, // High resolution scale
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 794,
+      onclone: (clonedDoc: Document) => {
+        clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((linkEl) => {
+          try {
+            const sheet = (linkEl as HTMLLinkElement).sheet;
+            if (sheet) {
+              const rules = sheet.cssRules || sheet.rules;
+              if (rules) {
+                let cssText = '';
+                for (let i = 0; i < rules.length; i++) {
+                  try {
+                    cssText += rules[i].cssText + '\n';
+                  } catch (_) {}
+                }
+                const cleaned = parseModernColorsAndConvert(cssText);
+                const styleEl = clonedDoc.createElement('style');
+                styleEl.textContent = cleaned;
+                if (linkEl.parentNode) {
+                  linkEl.parentNode.replaceChild(styleEl, linkEl);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Could not inline styling inside canvas context:", e);
+          }
+        });
+
+        clonedDoc.querySelectorAll('style').forEach((styleEl) => {
+          if (styleEl.textContent && (styleEl.textContent.includes('oklch') || styleEl.textContent.includes('oklab'))) {
+            styleEl.textContent = parseModernColorsAndConvert(styleEl.textContent);
+          }
+        });
+
+        clonedDoc.querySelectorAll('[style]').forEach((el) => {
+          const styleAttr = el.getAttribute('style');
+          if (styleAttr && (styleAttr.includes('oklch') || styleAttr.includes('oklab'))) {
+            el.setAttribute('style', parseModernColorsAndConvert(styleAttr));
+          }
+        });
+      }
+    };
+
+    console.log("[IMAGE ENGINE] Rendering A4 sheet into HTML5 Canvas element...");
+    try {
+      html2canvas(element, opt).then((canvas: HTMLCanvasElement) => {
+        console.log("[IMAGE PC] Canvas initialized successfully. Grabbing PNG DataURL stream...");
+        const dataUri = canvas.toDataURL('image/png');
+        const filename = `Invoice_${currentData.invoiceNumber || 'INV-001'}.png`;
+        triggerSafeDownload(dataUri, filename, 'image/png');
+      }).catch((err: any) => {
+        console.error("[IMAGE COMPILER FAIL]:", err);
+        alert('Image generation failed. Please try "Download PDF" instead.');
+      });
+    } catch (err: any) {
+      console.error("[IMAGE COMPILER TRIGGER FAIL]:", err);
+      alert(`Image subsystem error: ${err.message || err}`);
     }
   };
 
@@ -537,13 +786,58 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
             Print Invoice
           </button>
 
-          <button
-            onClick={handleDownloadPDF}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-md flex items-center transition-all cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Download PDF
-          </button>
+          {/* Multi-Format Download Action hub */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-md flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download Document
+              <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+            </button>
+            {showDownloadDropdown && (
+              <>
+                {/* Backdrop overlay to safely capture clicks outside and dismiss */}
+                <div 
+                  className="fixed inset-0 z-[100]" 
+                  onClick={() => setShowDownloadDropdown(false)}
+                />
+                <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-lg shadow-xl py-1.5 z-[101] animate-in fade-in duration-100 block">
+                  <button
+                    onClick={() => {
+                      handleDownloadPDF();
+                      setShowDownloadDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 border-b border-slate-100 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-red-500" />
+                    PDF Document (.pdf)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDownloadExcel();
+                      setShowDownloadDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 border-b border-slate-100 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    Excel Ledger (.csv)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDownloadImage();
+                      setShowDownloadDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 cursor-pointer"
+                  >
+                    <FileImage className="w-3.5 h-3.5 text-indigo-500" />
+                    High-Res Image (.png)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

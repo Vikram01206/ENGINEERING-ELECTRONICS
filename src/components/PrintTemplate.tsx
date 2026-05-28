@@ -34,7 +34,7 @@ export default function PrintTemplate({ invoice, shopDetails }: PrintTemplatePro
             <div className="flex items-center space-x-4">
               <div>
                 <h1 className="text-[20px] font-bold tracking-tight text-blue-700 font-serif leading-tight">
-                  ENGINEERING ENTERPRISE
+                  ENGINEERING ENTERPRISES
                 </h1>
                 <p className="text-[11px] text-slate-500 font-semibold tracking-wide uppercase mt-0.5">
                   TIN: 33223824729 | GST: 33BUIPM9249J1Z4
@@ -237,7 +237,7 @@ export default function PrintTemplate({ invoice, shopDetails }: PrintTemplatePro
                   Authorized Signatory
                 </p>
                 <p className="text-[10px] text-slate-400">
-                  ENGINEERING ENTERPRISE
+                  ENGINEERING ENTERPRISES
                 </p>
               </div>
             </div>

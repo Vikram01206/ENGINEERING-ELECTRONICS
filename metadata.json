@@ -1,6 +1,6 @@
 {
-  "name": "Engineering Enterprise Billing Desk",
-  "description": "Professional billing, stock, and invoice management software for Engineering Enterprise.",
+  "name": "Engineering Enterprises Billing Desk",
+  "description": "Professional billing, stock, and invoice management software for Engineering Enterprises.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

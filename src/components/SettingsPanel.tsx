@@ -47,7 +47,7 @@ export default function SettingsPanel({
   const handleExportBackup = () => {
     try {
       const backupObj = {
-        metaName: 'Engineering Enterprise Ledger Export',
+        metaName: 'Engineering Enterprises Ledger Export',
         exportedAt: new Date().toISOString(),
         shopDetails,
         products,
@@ -55,7 +55,7 @@ export default function SettingsPanel({
       };
 
       const fileContent = JSON.stringify(backupObj, null, 2);
-      const filename = `engineering_enterprise_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = `engineering_enterprises_backup_${new Date().toISOString().slice(0, 10)}.json`;
       const isPackaged = navigator.userAgent.toLowerCase().match(/(electron|nativefier|chrome-extension)/);
 
       if (isPackaged) {
@@ -160,7 +160,7 @@ export default function SettingsPanel({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                  Enterprise Registered Name*
+                  Enterprises Registered Name*
                 </label>
                 <input
                   id="settings-shop-name"

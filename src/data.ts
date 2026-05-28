@@ -40,7 +40,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
 ];
 
 export const DEFAULT_SHOP_DETAILS: ShopDetails = {
-  name: 'ENGINEERING ENTERPRISE',
+  name: 'ENGINEERING ENTERPRISES',
   phone: '6382952946',
   email: 'ernamdtudu@gmail.com',
   address: 'College P.O., Taradepalli - 631 005',

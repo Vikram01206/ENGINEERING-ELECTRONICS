@@ -55,16 +55,34 @@ export default function SettingsPanel({
       };
 
       const fileContent = JSON.stringify(backupObj, null, 2);
-      const blob = new Blob([fileContent], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      const filename = `engineering_enterprise_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      const isPackaged = navigator.userAgent.toLowerCase().match(/(electron|nativefier|chrome-extension)/);
 
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `engineering_enterprise_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      if (isPackaged) {
+        // Nativefier/Electron fallback: Packaged web view context restricts blob: URL trigger actions.
+        // Base64 Data URI is natively handled by Chromium's download engine offline.
+        const base64Content = btoa(unescape(encodeURIComponent(fileContent)));
+        const dataUri = `data:application/json;base64,${base64Content}`;
+        
+        const link = document.createElement('a');
+        link.href = dataUri;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Standard Web Browser approach
+        const blob = new Blob([fileContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
 
       onShowNotification('JSON ledger data backup downloaded successfully', 'success');
     } catch (e) {

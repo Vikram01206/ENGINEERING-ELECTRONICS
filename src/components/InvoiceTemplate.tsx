@@ -457,7 +457,25 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
       },
       jsPDF: { orientation: 'portrait' as const, unit: 'mm' as const, format: 'a4' as const }
     };
-    html2pdf().set(opt).from(element).save();
+    const isPackaged = navigator.userAgent.toLowerCase().match(/(electron|nativefier|chrome-extension)/);
+    if (isPackaged) {
+      // Packaged Desktop (Nativefier/Electron) context: standard dynamic Blob save() triggers can be restricted.
+      // Generating a base64 PDF data-uri forces Chromium to correctly open standard download options offline.
+      const worker = html2pdf().set(opt).from(element);
+      worker.output('datauristring').then((dataUri: string) => {
+        const link = document.createElement('a');
+        link.href = dataUri;
+        link.download = `${currentData.invoiceNumber || 'INV-001'}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }).catch((err: any) => {
+        console.error("Packaged PDF base64 render failed, falling back to blob save:", err);
+        html2pdf().set(opt).from(element).save();
+      });
+    } else {
+      html2pdf().set(opt).from(element).save();
+    }
   };
 
   const handleDoneEditing = () => {

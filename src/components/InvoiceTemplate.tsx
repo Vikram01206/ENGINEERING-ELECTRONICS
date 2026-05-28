@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import html2pdf from 'html2pdf.js';
 // @ts-ignore
 import html2canvas from 'html2canvas';
-import { Printer, Download, Edit2, Check, ArrowLeft, RefreshCw, Plus, Trash2, ChevronDown, FileSpreadsheet, FileImage, FileText } from 'lucide-react';
+import { Printer, Edit2, Check, ArrowLeft, RefreshCw, Plus, Trash2 } from 'lucide-react';
 
 export interface InvoiceTemplateData {
   invoiceNumber: string;
@@ -58,7 +58,6 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
   const [editMode, setEditMode] = useState(false);
   const [currentData, setCurrentData] = useState<InvoiceTemplateData>(initialInvoiceData);
   const [showLogo, setShowLogo] = useState(true);
-  const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
 
   // Auto-recalculate values in local state when items, discount, or shipping changes
   const calculateTotals = (itemsList: InvoiceTemplateData['items'], disc: InvoiceTemplateData['discount'], shipValue: number) => {
@@ -359,7 +358,7 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
   };
 
   // A robust downloader that bypasses Nativefier sandbox issues and resolves dynamically
-  const triggerSafeDownload = (blobOrDataUri: Blob | string, filename: string, mimeType: string) => {
+  const triggerSafeDownload = async (blobOrDataUri: Blob | string, filename: string, mimeType: string) => {
     console.log(`[DOWNLOAD ENGINE] Attempting to save: ${filename} (MimeType: ${mimeType})`);
     
     // Safety check for empty content
@@ -369,24 +368,132 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
       return;
     }
 
+    // Helper functions for safe payload encoding & decoding of modern data structures offline
+    const dataURIToBlob = (dataURI: string): Blob => {
+      const parts = dataURI.split(',');
+      const byteString = atob(parts[1]);
+      const mimeString = parts[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeString });
+    };
+
+    const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    };
+
     try {
+      // 1. Dual Environment Detection: Probe for Node.js modules natively provided by Nativefier / Electron pre-configuration rules
+      const hasRequire = typeof (window as any).require === 'function';
+      if (hasRequire) {
+        try {
+          const req = (window as any).require;
+          const fs = req('fs');
+          const os = req('os');
+          const path = req('path');
+          
+          if (fs && os && path) {
+            console.log("[DOWNLOAD SYSTEM] Node.js core modules detected. Conducting direct offline filesystem output write...");
+            let buffer: Uint8Array;
+            
+            if (blobOrDataUri instanceof Blob) {
+              const arrayBuffer = await blobOrDataUri.arrayBuffer();
+              buffer = new Uint8Array(arrayBuffer);
+            } else if (typeof blobOrDataUri === 'string' && blobOrDataUri.startsWith('data:')) {
+              const base64Str = blobOrDataUri.split(',')[1];
+              const binaryStr = atob(base64Str);
+              buffer = new Uint8Array(binaryStr.length);
+              for (let i = 0; i < binaryStr.length; i++) {
+                buffer[i] = binaryStr.charCodeAt(i);
+              }
+            } else {
+              const encoder = new TextEncoder();
+              buffer = encoder.encode(blobOrDataUri);
+            }
+
+            // Derive reliable download storage directory safely from OS hooks
+            const homeDir = os.homedir();
+            const downloadDir = path.join(homeDir, 'Downloads');
+            let targetDir = downloadDir;
+            
+            if (!fs.existsSync(downloadDir)) {
+              const desktopDir = path.join(homeDir, 'Desktop');
+              if (fs.existsSync(desktopDir)) {
+                targetDir = desktopDir;
+              } else {
+                targetDir = homeDir;
+              }
+            }
+
+            const targetFilePath = path.join(targetDir, filename);
+            fs.writeFileSync(targetFilePath, buffer);
+            
+            console.log(`[DOWNLOAD SYSTEM] Direct file-save offline success: ${targetFilePath}`);
+            alert(`SUCCESS: Invoice document has been downloaded and saved offline!\n\nFolder Path: ${targetFilePath}`);
+            return;
+          }
+        } catch (nodeErr) {
+          console.warn("[DOWNLOAD SYSTEM] Direct Node.js filesystem write failed or bypassed. Shifting to IPC trigger sequence:", nodeErr);
+        }
+      }
+
+      // 2. Electron IPC channel trigger fallback: useful if the main wrapper contains an active save or download listener
+      if (hasRequire) {
+        try {
+          const req = (window as any).require;
+          const electron = req('electron');
+          if (electron && electron.ipcRenderer) {
+            console.log("[DOWNLOAD SYSTEM] Dispatching file payload to Electron channel 'download-file'...");
+            let sampleBase64 = '';
+            
+            if (blobOrDataUri instanceof Blob) {
+              const ab = await blobOrDataUri.arrayBuffer();
+              sampleBase64 = arrayBufferToBase64(ab);
+            } else if (typeof blobOrDataUri === 'string' && blobOrDataUri.startsWith('data:')) {
+              sampleBase64 = blobOrDataUri.split(',')[1];
+            } else {
+              sampleBase64 = btoa(unescape(encodeURIComponent(blobOrDataUri)));
+            }
+
+            // Send standard IPC signal to prompt Nativefier/Electron Main process for file target saves
+            electron.ipcRenderer.send('download-file', {
+              fileName: filename,
+              base64Data: sampleBase64,
+              mimeType: mimeType
+            });
+            console.log("[DOWNLOAD SYSTEM] Electron IPC download message posted.");
+          }
+        } catch (ipcErr) {
+          console.warn("[DOWNLOAD SYSTEM] Electron IPC message routing was blocked or failed:", ipcErr);
+        }
+      }
+
+      // 3. Fallback Standard HTML5 createObjectURL (Standard Web Browsers & general frames with dynamic anchor links)
       if (blobOrDataUri instanceof Blob) {
-        // Standard Web approach with local Object URL
         const url = URL.createObjectURL(blobOrDataUri);
         console.log(`[DOWNLOAD SYSTEM] ObjectURL successfully allocated: ${url}`);
         
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
+        link.setAttribute('download', filename);
         link.style.display = 'none';
         document.body.appendChild(link);
         
-        // Dispatched element click action
         try {
           link.click();
-          console.log(`[DOWNLOAD SYSTEM] Anchor click dispatched successfully for ${filename}`);
+          console.log(`[DOWNLOAD SYSTEM] HTML5 Link clicked: ${filename}`);
         } catch (clickErr) {
-          console.warn("[DOWNLOAD SYSTEM] Programmatic click failed, using MouseEvent dispatch fallback:", clickErr);
+          console.warn("[DOWNLOAD SYSTEM] Programmatic link click failed, using MouseEvent fallback gesture:", clickErr);
           const clickEvent = new MouseEvent('click', {
             view: window,
             bubbles: true,
@@ -396,73 +503,88 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
         }
         
         document.body.removeChild(link);
-        
-        // Revoke after a delay to ensure the browser frame thread has successfully received the download stream
         setTimeout(() => {
           URL.revokeObjectURL(url);
-          console.log(`[DOWNLOAD SYSTEM] ObjectURL revoked/deallocated: ${url}`);
-        }, 12000);
+          console.log(`[DOWNLOAD SYSTEM] ObjectURL deallocated: ${url}`);
+        }, 15000);
         
       } else if (typeof blobOrDataUri === 'string' && blobOrDataUri.startsWith('data:')) {
-        // Base64 Data-URI payload
-        console.log(`[DOWNLOAD SYSTEM] Data-URI detected (payload length: ${blobOrDataUri.length} characters).`);
-        const link = document.createElement('a');
-        link.href = blobOrDataUri;
-        link.download = filename;
-        link.style.display = 'none';
-        document.body.appendChild(link);
+        console.log(`[DOWNLOAD SYSTEM] Base64 URI string payload detected. Length: ${blobOrDataUri.length}`);
         
         try {
+          // Nativefier/Electron restricts loading long direct Base64 DataURIs via href click.
+          // Converting to local object Blob URLs completely scales down download engine restriction.
+          const convertedBlob = dataURIToBlob(blobOrDataUri);
+          const url = URL.createObjectURL(convertedBlob);
+          
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          link.setAttribute('download', filename);
+          link.style.display = 'none';
+          document.body.appendChild(link);
           link.click();
-          console.log(`[DOWNLOAD SYSTEM] Data-URI click dispatched successfully for ${filename}`);
-        } catch (clickErr) {
-          console.warn("[DOWNLOAD SYSTEM] Data-URI programmatic click failed, dispatching MouseEvent fallback:", clickErr);
-          const clickEvent = new MouseEvent('click', {
-            view: window,
-            bubbles: true,
-            cancelable: true
-          });
-          link.dispatchEvent(clickEvent);
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 15000);
+          console.log("[DOWNLOAD SYSTEM] Base64 parsed into temporary Blob and dispatched successfully.");
+        } catch (b64Err) {
+          console.warn("[DOWNLOAD SYSTEM] Blob-conversion fallback failed, trying direct URI href link output:", b64Err);
+          const link = document.createElement('a');
+          link.href = blobOrDataUri;
+          link.download = filename;
+          link.setAttribute('download', filename);
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         }
-        document.body.removeChild(link);
       } else {
-        // Fallback for direct URL strings
+        // Plain raw string fallback (e.g. non-base64 ledger outputs)
+        const blob = new Blob([blobOrDataUri], { type: mimeType });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = blobOrDataUri;
+        link.href = url;
         link.download = filename;
+        link.setAttribute('download', filename);
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 15000);
       }
     } catch (err: any) {
-      console.error("[DOWNLOAD ENGINE CRITICAL ERROR] Standard sandbox file-save routine failed:", err);
+      console.error("[DOWNLOAD SYSTEM CRITICAL OUTCOME] Native file saving rejected by client security rules:", err);
       
-      // Fallback 1: PDF printable fallback alert
+      // Fallback fallback: Interactive modal/clipboard or print recommendation alerts
       if (filename.toLowerCase().endsWith('.pdf')) {
         alert(
-          `NOTICE: Environment File System Sandbox Detected!\n\n` +
-          `Your packaged client (Nativefier/Electron) has restricted direct file-write operations.\n\n` +
-          `FIX: Click "Print Invoice" on the toolbar and select "Save as PDF" relative to your local printer dialog to save custom drafts perfectly!`
+          `NOTICE: Environment File System Sandbox Interception!\n\n` +
+          `Your packaged client (Nativefier/Electron) blocks third-party applets from directly saving blob content offline.\n\n` +
+          `PERFECT WORKAROUND: Click "Print Invoice" from the menu bar to open your local system printer interface, and choose "Save as PDF" to render high-resolution logs immediately!`
         );
       } else if (filename.toLowerCase().endsWith('.csv') || filename.toLowerCase().endsWith('.xls')) {
-        // Clipboard fallback for Spreadsheet operations
         try {
+          let csvText = '';
           if (blobOrDataUri instanceof Blob) {
-            blobOrDataUri.text().then(text => {
-              navigator.clipboard.writeText(text);
-              alert("Sandbox restricted direct file save. The Excel Ledger CSV rows have been successfully copied to your system clipboard instead! Paste in Microsoft Excel or Google Sheets directly via Ctrl+V.");
-            });
-          } else if (typeof blobOrDataUri === 'string') {
-            navigator.clipboard.writeText(blobOrDataUri);
-            alert("Sandbox restricted direct file save. The Excel Ledger CSV rows have been successfully copied to your system clipboard instead! Paste in Microsoft Excel or Google Sheets directly via Ctrl+V.");
+            csvText = await blobOrDataUri.text();
+          } else if (typeof blobOrDataUri === 'string' && blobOrDataUri.startsWith('data:')) {
+            const rawB64 = blobOrDataUri.split(',')[1];
+            csvText = atob(rawB64);
+          } else {
+            csvText = String(blobOrDataUri);
           }
+          await navigator.clipboard.writeText(csvText);
+          alert(
+            `NOTICE: Native Sandbox Security Conflict!\n\n` +
+            `Direct spreadsheet output was restricted. However, we successfully copied the entire Excel Ledger CSV layout onto your clipboard.\n\n` +
+            `FIX: Paste (Ctrl+V) directly into Excel, Google Sheets, or Notepad to restore database information instantly!`
+          );
         } catch (clipErr) {
-          console.error("Clipboard backup fallback failed:", clipErr);
-          alert(`Download blocked by environment sandbox. Error: ${err.message || err}`);
+          console.error("Clipboard copy failed:", clipErr);
+          alert(`Download blocked by native workspace sandbox environment. Error detail: ${err.message || err}`);
         }
       } else {
-        alert(`File save is restricted by your local native client sandbox. Error: ${err.message || err}`);
+        alert(`Direct local download restricted by client shell configuration rules. Error: ${err.message || err}`);
       }
     }
   };
@@ -785,59 +907,6 @@ export default function InvoiceTemplate({ initialInvoiceData, onBack, onInvoiceU
             <Printer className="w-3.5 h-3.5 mr-1.5" />
             Print Invoice
           </button>
-
-          {/* Multi-Format Download Action hub */}
-          <div className="relative">
-            <button
-              onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-md flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download Document
-              <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-            </button>
-            {showDownloadDropdown && (
-              <>
-                {/* Backdrop overlay to safely capture clicks outside and dismiss */}
-                <div 
-                  className="fixed inset-0 z-[100]" 
-                  onClick={() => setShowDownloadDropdown(false)}
-                />
-                <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-lg shadow-xl py-1.5 z-[101] animate-in fade-in duration-100 block">
-                  <button
-                    onClick={() => {
-                      handleDownloadPDF();
-                      setShowDownloadDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 border-b border-slate-100 cursor-pointer"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-red-500" />
-                    PDF Document (.pdf)
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleDownloadExcel();
-                      setShowDownloadDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 border-b border-slate-100 cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                    Excel Ledger (.csv)
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleDownloadImage();
-                      setShowDownloadDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <FileImage className="w-3.5 h-3.5 text-indigo-500" />
-                    High-Res Image (.png)
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
 
